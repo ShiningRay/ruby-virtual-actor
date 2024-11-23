@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package virtual_actor;
+
+service ActorService {
+  rpc SendMessage (MessageRequest) returns (MessageResponse) {}
+  rpc GetActorState (ActorStateRequest) returns (ActorStateResponse) {}
+}
+
+message MessageRequest {
+  string actor_id = 1;
+  string actor_type = 2;
+  string method_name = 3;
+  bytes serialized_args = 4;
+}
+
+message MessageResponse {
+  bool success = 1;
+  string error_message = 2;
+  bytes result = 3;
+}
+
+message ActorStateRequest {
+  string actor_id = 1;
+}
+
+message ActorStateResponse {
+  bool exists = 1;
+  string node_id = 2;
+  bytes state = 3;
+}
