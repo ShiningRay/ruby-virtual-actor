@@ -9,11 +9,15 @@ module VirtualActor
     end
 
     def method_missing(method_name, *args)
+      unless @actor.class.exposed_methods.include?(method_name.to_sym)
+        super
+      end
+
       @actor.send_message(method: method_name, args: args)
     end
 
     def respond_to_missing?(method_name, include_private = false)
-      true
+      @actor.class.exposed_methods.include?(method_name.to_sym) || super
     end
 
     def inspect

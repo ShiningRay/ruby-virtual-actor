@@ -6,12 +6,14 @@ RSpec.describe VirtualActor::Proxy do
   let(:actor_id) { 'test_proxy' }
   let(:proxy) { described_class.new(actor_id, CounterActor) }
   let(:actor) { instance_double(CounterActor) }
+  let(:actor_class) { class_double(CounterActor, exposed_methods: [:increment, :decrement, :custom_method]) }
 
   before do
     # Mock external dependencies
     allow(VirtualActor::Registry.instance).to receive(:create_or_get_actor).and_return(actor)
     allow(VirtualActor::Registry.instance).to receive(:count_actors_of_type).and_return(1)
     allow(actor).to receive(:send_message).and_return(1)
+    allow(actor).to receive(:class).and_return(actor_class)
   end
 
   describe '#method_missing' do

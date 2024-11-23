@@ -1,6 +1,7 @@
 require_relative 'logging'
 require_relative 'persistence'
 require_relative 'metrics'
+require_relative 'proxy'
 
 module VirtualActor
   class BaseActor
@@ -8,8 +9,8 @@ module VirtualActor
 
     class << self
       def state(*attributes)
-        @state_attributes ||= []
-        @state_attributes.concat(attributes)
+        @state_attrs ||= []
+        @state_attrs.concat(attributes)
         attr_accessor(*attributes)
       end
 
@@ -22,8 +23,8 @@ module VirtualActor
         @init_block = block
       end
 
-      def state_attributes
-        @state_attributes ||= []
+      def state_attrs
+        @state_attrs ||= []
       end
 
       def exposed_methods
@@ -51,7 +52,21 @@ module VirtualActor
         return nil
       end
 
+      start_time = Time.now
       result = send(method, *args)
+      duration = Time.now - start_time
+
+      Metrics.instance.observe_message_duration(
+        self.class.name,
+        method.to_s,
+        duration
+      )
+
+      Metrics.instance.increment_message_counter(
+        self.class.name,
+        method.to_s
+      )
+
       save_state
       result
     end
@@ -60,10 +75,10 @@ module VirtualActor
 
     def save_state
       state = {}
-      self.class.state_attributes.each do |attr|
+      self.class.state_attrs.each do |attr|
         state[attr] = instance_variable_get("@#{attr}")
       end
-      Persistence.instance.save_actor_state(@actor_id, state)
+      Persistence.instance.save_actor_state(@actor_id, **state)
     end
 
     def restore_state
