@@ -1,102 +1,77 @@
-require 'concurrent'
-require 'msgpack'
 require_relative 'logging'
-require_relative 'metrics'
 require_relative 'persistence'
+require_relative 'metrics'
 
 module VirtualActor
   class BaseActor
     include Logging
 
-    def initialize(actor_id)
-      @actor_id = actor_id
-      @mailbox = Concurrent::Array.new
-      @mutex = Mutex.new
-      @condition = ConditionVariable.new
-      
-      # 尝试恢复状态
-      restore_state
-      
-      # 启动消息循环
-      start_message_loop
-      
-      # 更新指标
-      update_metrics
-    end
-
-    def send_message(message)
-      start_time = Time.now
-      
-      @mutex.synchronize do
-        @mailbox << message
-        @condition.signal
+    class << self
+      def state(*attributes)
+        @state_attributes ||= []
+        @state_attributes.concat(attributes)
+        attr_accessor(*attributes)
       end
 
-      # 记录消息处理时间
-      duration = Time.now - start_time
-      Metrics.instance.observe_message_duration(
-        self.class.name,
-        message[:method].to_s,
-        duration
-      )
-      
-      # 增加消息计数
-      Metrics.instance.increment_message_counter(
-        self.class.name,
-        message[:method].to_s
-      )
+      def expose(*methods)
+        @exposed_methods ||= []
+        @exposed_methods.concat(methods)
+      end
+
+      def init(&block)
+        @init_block = block
+      end
+
+      def state_attributes
+        @state_attributes ||= []
+      end
+
+      def exposed_methods
+        @exposed_methods ||= []
+      end
+
+      def init_block
+        @init_block
+      end
+
+      def get(actor_id)
+        Proxy.new(actor_id, self)
+      end
     end
 
-    def save_state
-      state = get_state
-      Persistence.instance.save_actor_state(@actor_id, state) if state
+    def initialize(actor_id)
+      @actor_id = actor_id
+      instance_eval(&self.class.init_block) if self.class.init_block
+      restore_state
     end
 
-    protected
+    def send_message(method:, args: [])
+      unless self.class.exposed_methods.include?(method.to_sym)
+        logger.warn "Method #{method} is not exposed"
+        return nil
+      end
 
-    def get_state
-      nil
-    end
-
-    def restore_state
-      state = Persistence.instance.load_actor_state(@actor_id)
-      set_state(state) if state
-    end
-
-    def set_state(state)
-      # 子类重写此方法以恢复状态
+      result = send(method, *args)
+      save_state
+      result
     end
 
     private
 
-    def start_message_loop
-      Thread.new do
-        loop do
-          message = nil
-          @mutex.synchronize do
-            while @mailbox.empty?
-              @condition.wait(@mutex)
-            end
-            message = @mailbox.shift
-          end
-          
-          begin
-            handle_message(message) if message
-            # 处理完消息后保存状态
-            save_state
-          rescue => e
-            logger.error "Error processing message: #{e.message}\n#{e.backtrace.join("\n")}"
-          end
+    def save_state
+      state = {}
+      self.class.state_attributes.each do |attr|
+        state[attr] = instance_variable_get("@#{attr}")
+      end
+      Persistence.instance.save_actor_state(@actor_id, state)
+    end
+
+    def restore_state
+      if state = Persistence.instance.load_actor_state(@actor_id)
+        state.each do |attr, value|
+          instance_variable_set("@#{attr}", value)
         end
       end
-    end
-
-    def handle_message(message)
-      raise NotImplementedError, "#{self.class} needs to implement 'handle_message'"
-    end
-
-    def update_metrics
-      Metrics.instance.set_actor_count(self.class.name, Registry.instance.count_actors_of_type(self.class))
     end
   end
 end

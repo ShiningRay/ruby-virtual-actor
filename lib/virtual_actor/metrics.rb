@@ -1,5 +1,6 @@
 require 'prometheus/client'
 require 'prometheus/client/push'
+require 'singleton'
 
 module VirtualActor
   class Metrics

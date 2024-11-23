@@ -1,5 +1,5 @@
 require 'grpc'
-require_relative 'virtual_actor_services_pb'
+require_relative 'grpc/virtual_actor_services_pb'
 
 module VirtualActor
   class GrpcService < VirtualActor::ActorService::Service

@@ -1,4 +1,5 @@
-require 'logging'
+require 'logger'
+require 'fileutils'
 
 module VirtualActor
   module Logging
@@ -18,25 +19,28 @@ module VirtualActor
       private
 
       def setup_logger
-        logger = ::Logging.logger[self]
-        logger.level = ::Logging.level_num(Configuration.instance.log_level)
-        logger.add_appenders(
-          ::Logging.appenders.stdout(
-            layout: ::Logging.layouts.pattern(
-              pattern: '[%d] %-5l %c: %m\n',
-              date_pattern: '%Y-%m-%d %H:%M:%S'
-            )
-          ),
-          ::Logging.appenders.file(
-            "log/#{self.name.downcase}.log",
-            layout: ::Logging.layouts.pattern(
-              pattern: '[%d] %-5l %c: %m\n',
-              date_pattern: '%Y-%m-%d %H:%M:%S'
-            )
-          )
-        )
+        FileUtils.mkdir_p('log') unless Dir.exist?('log')
+        logger = Logger.new(MultiIO.new(STDOUT, File.open("log/#{self.name.downcase}.log", 'a')))
+        logger.level = Logger.const_get(Configuration.instance.log_level.upcase)
+        logger.formatter = proc do |severity, datetime, progname, msg|
+          "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} #{self.name}: #{msg}\n"
+        end
         logger
       end
+    end
+  end
+
+  class MultiIO
+    def initialize(*targets)
+      @targets = targets
+    end
+
+    def write(*args)
+      @targets.each { |t| t.write(*args) }
+    end
+
+    def close
+      @targets.each(&:close)
     end
   end
 end

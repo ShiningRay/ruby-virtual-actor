@@ -56,6 +56,10 @@ module VirtualActor
       @actors.values.count { |actor| actor.is_a?(actor_class) }
     end
 
+    def inspect
+      "#<#{self.class.name} actors=#{@actors.size}>"
+    end
+
     private
 
     def find_actor_on_other_nodes(actor_id)

@@ -1,6 +1,8 @@
-require 'redis'
+require 'singleton'
 require 'connection_pool'
+require 'redis'
 require 'msgpack'
+require_relative 'logging'
 
 module VirtualActor
   class Persistence
@@ -8,54 +10,22 @@ module VirtualActor
     include Logging
 
     def initialize
-      @redis = ConnectionPool.new(size: 5, timeout: 5) do
-        Redis.new(url: Configuration.instance.redis_url)
-      end
+      @redis = ConnectionPool.new(size: 5, timeout: 5) { Redis.new(url: Configuration.instance.redis_url) }
     end
 
     def save_actor_state(actor_id, state)
-      return unless Configuration.instance.persistence_enabled
-
-      @redis.with do |conn|
-        begin
-          serialized_state = MessagePack.pack(state)
-          conn.set("actor:#{actor_id}:state", serialized_state)
-          logger.debug "Saved state for actor #{actor_id}"
-        rescue => e
-          logger.error "Failed to save state for actor #{actor_id}: #{e.message}"
-          raise
-        end
+      @redis.with do |redis|
+        redis.set("actor:#{actor_id}:state", MessagePack.pack(state))
+        logger.debug "Saved state for actor #{actor_id}: #{state}"
       end
     end
 
     def load_actor_state(actor_id)
-      return unless Configuration.instance.persistence_enabled
-
-      @redis.with do |conn|
-        begin
-          serialized_state = conn.get("actor:#{actor_id}:state")
-          return nil unless serialized_state
-
-          state = MessagePack.unpack(serialized_state)
-          logger.debug "Loaded state for actor #{actor_id}"
+      @redis.with do |redis|
+        if data = redis.get("actor:#{actor_id}:state")
+          state = MessagePack.unpack(data)
+          logger.debug "Loaded state for actor #{actor_id}: #{state}"
           state
-        rescue => e
-          logger.error "Failed to load state for actor #{actor_id}: #{e.message}"
-          raise
-        end
-      end
-    end
-
-    def delete_actor_state(actor_id)
-      return unless Configuration.instance.persistence_enabled
-
-      @redis.with do |conn|
-        begin
-          conn.del("actor:#{actor_id}:state")
-          logger.debug "Deleted state for actor #{actor_id}"
-        rescue => e
-          logger.error "Failed to delete state for actor #{actor_id}: #{e.message}"
-          raise
         end
       end
     end
